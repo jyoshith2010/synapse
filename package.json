@@ -11,6 +11,7 @@
     "deploy": "npm run build && firebase deploy --only hosting,functions"
   },
   "dependencies": {
+    "@emailjs/browser": "^4.4.1",
     "@google/generative-ai": "^0.21.0",
     "@hello-pangea/dnd": "^18.0.1",
     "dotenv": "^17.4.2",

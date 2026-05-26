@@ -11,6 +11,7 @@ const Dashboard = lazy(() => import('./pages/Dashboard'))
 const AIAssistant = lazy(() => import('./pages/AIAssistant'))
 const AIHub = lazy(() => import('./pages/AIHub'))
 const Notes = lazy(() => import('./pages/Notes'))
+const Support = lazy(() => import('./pages/Support'))
 import {
   StudyPlanner, Flashcards, MockTests,
   Timer, Analytics, Groups, ExamTracker, Settings
@@ -80,6 +81,7 @@ const PAGES = {
   exams:      { component: ExamTracker,  title: 'Exam Tracker',  sub: 'Countdowns & syllabus' },
   aihub:      { component: AIHub,        title: 'Synapse AI',    sub: 'Built-in academic intelligence' },
   settings:   { component: Settings,     title: 'Settings',      sub: 'Preferences' },
+  support:    { component: Support,      title: 'Support',       sub: 'We are here to help' },
 }
 
 // ── PAGE TRANSITION HOOK ──

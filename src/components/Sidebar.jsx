@@ -28,6 +28,7 @@ const NAV = [
 
 const BOTTOM_NAV = [
   { id: 'aihub', icon: '⚡', label: 'Synapse AI Hub' },
+  { id: 'support', icon: '✉', label: 'Support' },
   { id: 'settings', icon: '◎', label: 'Settings' },
 ]
 
