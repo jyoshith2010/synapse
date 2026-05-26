@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
 import { getFlashcards, saveFlashcards, getTasks, saveTasks, getStudySessions, getWeakTopics, getNotes, getExams, saveExams } from '../lib/storage'
 import { calculateNextReview, getDueCards, getFlashcardStats, sortCardsByPriority, updateCardReview } from '../lib/spacedRepetition'
+import { synapseChat } from '../lib/ai/synapseAi'
 
 function ComingSoon({ title, icon, desc, color='var(--c)' }) {
   return (
@@ -22,6 +23,9 @@ export function StudyPlanner() {
   const [newTask, setNewTask] = useState('')
   const [newSubject, setNewSubject] = useState('Physics')
   const [newDuration, setNewDuration] = useState(60)
+  const [showAISchedule, setShowAISchedule] = useState(false)
+  const [dailyInput, setDailyInput] = useState('')
+  const [isGeneratingSchedule, setIsGeneratingSchedule] = useState(false)
 
   useEffect(() => {
     setTasks(getTasks())
@@ -59,6 +63,59 @@ export function StudyPlanner() {
     const updated = tasks.filter(t => t.id !== id)
     setTasks(updated)
     saveTasks(updated)
+  }
+
+  const handleAISchedule = async () => {
+    if (!dailyInput.trim()) return
+    
+    setIsGeneratingSchedule(true)
+    try {
+      const prompt = `Based on the following daily activities, create a study schedule for today (${selectedDate}). 
+      
+Daily activities: ${dailyInput}
+
+Generate a structured study plan with 4-6 tasks. For each task, provide:
+1. Subject (Physics, Chemistry, Mathematics, Biology, etc.)
+2. Specific topic/task description
+3. Duration in minutes (30, 60, 90, or 120)
+
+Format your response as a JSON array like this:
+[
+  {"subject": "Physics", "task": "Study Newton's Laws", "duration": 60},
+  {"subject": "Chemistry", "task": "Practice organic reactions", "duration": 45}
+]
+
+Only return the JSON array, no other text.`
+
+      const response = await synapseChat([{ role: 'user', content: prompt }], null)
+      
+      // Parse the AI response to extract JSON
+      const jsonMatch = response.match(/\[[\s\S]*\]/)
+      if (jsonMatch) {
+        const generatedTasks = JSON.parse(jsonMatch[0])
+        
+        // Add tasks to the planner
+        const newTasks = generatedTasks.map(t => ({
+          id: Date.now() + Math.random(),
+          subject: t.subject,
+          task: t.task,
+          done: false,
+          scheduledDate: selectedDate,
+          duration: t.duration || 60
+        }))
+        
+        const updated = [...tasks, ...newTasks]
+        setTasks(updated)
+        saveTasks(updated)
+        setShowAISchedule(false)
+        setDailyInput('')
+      }
+    } catch (error) {
+      console.error('Error generating AI schedule:', error)
+      alert('Failed to generate schedule. Please try again.')
+    } finally {
+      setIsGeneratingSchedule(false)
+    }
   }
 
   // Get tasks for selected date
@@ -144,6 +201,7 @@ export function StudyPlanner() {
         <button 
           className="btn btn-ghost" 
           style={{ fontSize: 12, padding: '8px 14px' }}
+          onClick={() => setShowAISchedule(true)}
         >
           ⚡ AI Schedule
         </button>
@@ -199,6 +257,52 @@ export function StudyPlanner() {
                 Add Task
               </button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {showAISchedule && (
+        <div style={{ marginBottom: 16, padding: 16, borderRadius: 12, border: '1px solid var(--glass-border)', background: 'var(--glass)' }}>
+          <div style={{ fontFamily: 'Syne,sans-serif', fontSize: 15, fontWeight: 700, marginBottom: 12 }}>
+            AI Schedule Generator
+          </div>
+          <div style={{ fontSize: 12, color: 'var(--txt2)', marginBottom: 12 }}>
+            Describe what you did today or your study goals, and AI will create a personalized study schedule.
+          </div>
+          <textarea
+            value={dailyInput}
+            onChange={(e) => setDailyInput(e.target.value)}
+            placeholder="e.g., I studied Physics for 2 hours today, watched chemistry videos, and need to prepare for my math exam next week..."
+            rows={4}
+            style={{ 
+              width: '100%', 
+              padding: '10px 14px', 
+              borderRadius: 8, 
+              background: 'rgba(255,255,255,0.04)', 
+              border: '1px solid var(--glass-border)', 
+              color: 'var(--txt)', 
+              fontSize: 13,
+              resize: 'vertical',
+              marginBottom: 12
+            }}
+          />
+          <div style={{ display: 'flex', gap: 8 }}>
+            <button 
+              className="btn btn-ghost" 
+              style={{ flex: 1, fontSize: 12 }} 
+              onClick={() => setShowAISchedule(false)}
+              disabled={isGeneratingSchedule}
+            >
+              Cancel
+            </button>
+            <button 
+              className="btn btn-primary" 
+              style={{ flex: 1, fontSize: 12 }} 
+              onClick={handleAISchedule}
+              disabled={isGeneratingSchedule || !dailyInput.trim()}
+            >
+              {isGeneratingSchedule ? 'Generating...' : 'Generate Schedule'}
+            </button>
           </div>
         </div>
       )}
@@ -545,6 +649,19 @@ export function MockTests() {
   const [showAIGenerateModal, setShowAIGenerateModal] = useState(false)
   const [aiExplanations, setAiExplanations] = useState({})
   const [generatingExplanation, setGeneratingExplanation] = useState(false)
+  const [aiTestSubject, setAiTestSubject] = useState('')
+  const [aiTestTopics, setAiTestTopics] = useState('')
+  const [aiTestQuestionCount, setAiTestQuestionCount] = useState(5)
+  const [aiTestDuration, setAiTestDuration] = useState(30)
+  const [isGeneratingTest, setIsGeneratingTest] = useState(false)
+  const [subjectiveAnswers, setSubjectiveAnswers] = useState({})
+  const [isGradingSubjective, setIsGradingSubjective] = useState(false)
+  const [showManualAnswerKeyModal, setShowManualAnswerKeyModal] = useState(false)
+  const [manualAnswerKey, setManualAnswerKey] = useState({})
+  const [isProcessingPDF, setIsProcessingPDF] = useState(false)
+  const [pdfText, setPdfText] = useState('')
+  const [showPDFConversionModal, setShowPDFConversionModal] = useState(false)
+  const [conversionSubject, setConversionSubject] = useState('')
 
   useEffect(() => {
     const savedTests = JSON.parse(localStorage.getItem('synapse_mock_tests') || '[]')
@@ -587,11 +704,28 @@ export function MockTests() {
 
   const calculateScore = () => {
     if (!selectedTest) return 0
-    let correct = 0
+    let totalScore = 0
+    let maxScore = 0
+    
     selectedTest.questions.forEach(q => {
-      if (answers[q.id] === q.correct) correct++
+      if (q.type === 'subjective') {
+        // For subjective questions, use AI grading
+        const userAnswer = subjectiveAnswers[q.id]
+        if (userAnswer) {
+          // Will be graded asynchronously, for now count as partial
+          totalScore += 50 // Placeholder, will be updated with actual AI grading
+          maxScore += 100
+        }
+      } else {
+        // MCQ questions
+        if (answers[q.id] === q.correct) {
+          totalScore += 100
+        }
+        maxScore += 100
+      }
     })
-    return Math.round((correct / selectedTest.questions.length) * 100)
+    
+    return maxScore > 0 ? Math.round((totalScore / maxScore) * 100) : 0
   }
 
   const handleBack = () => {
@@ -660,61 +794,149 @@ export function MockTests() {
     }
   }
 
-  const handleAIGenerate = () => {
-    const weakTopics = getWeakTopics()
-    if (weakTopics.length === 0) {
-      alert('No weak topics found. Please add some weak topics first.')
+  const handleManualAnswerKeySubmit = () => {
+    if (!selectedTestForKey) return
+    
+    const updatedTests = tests.map(test => {
+      if (test.id === selectedTestForKey.id) {
+        return {
+          ...test,
+          questions: test.questions.map(q => ({
+            ...q,
+            correct: manualAnswerKey[q.id] !== undefined ? parseInt(manualAnswerKey[q.id]) : q.correct
+          }))
+        }
+      }
+      return test
+    })
+    
+    setTests(updatedTests)
+    localStorage.setItem('synapse_mock_tests', JSON.stringify(updatedTests))
+    setShowManualAnswerKeyModal(false)
+    setSelectedTestForKey(null)
+    setManualAnswerKey({})
+    alert('Answer key updated successfully')
+  }
+
+  const handlePDFConversion = async (textContent, subject) => {
+    setIsProcessingPDF(true)
+    try {
+      const prompt = `Convert the following text content into a test format. Extract all questions and their options.
+      
+Text content:
+${textContent}
+
+Subject: ${subject}
+
+Extract questions in the following JSON format:
+[
+  {
+    "id": 1,
+    "question": "Question text",
+    "options": ["Option A", "Option B", "Option C", "Option D"],
+    "correct": 0,
+    "type": "mcq"
+  }
+]
+
+Only return the JSON array. If options are not available, mark as "subjective" type.`
+
+      const response = await synapseChat([{ role: 'user', content: prompt }], null)
+      
+      const jsonMatch = response.match(/\[[\s\S]*\]/)
+      if (jsonMatch) {
+        const extractedQuestions = JSON.parse(jsonMatch[0])
+        
+        const newTest = {
+          id: Date.now(),
+          title: `Converted: ${subject}`,
+          subject: subject,
+          duration: 30,
+          difficulty: 'medium',
+          questions: extractedQuestions
+        }
+
+        const updatedTests = [...tests, newTest]
+        setTests(updatedTests)
+        localStorage.setItem('synapse_mock_tests', JSON.stringify(updatedTests))
+        alert(`Successfully converted ${extractedQuestions.length} questions from the content!`)
+      } else {
+        throw new Error('Could not parse AI response')
+      }
+    } catch (error) {
+      console.error('Error converting PDF:', error)
+      alert('Failed to convert content. Please try again or ensure the text contains clear questions.')
+    } finally {
+      setIsProcessingPDF(false)
+    }
+  }
+
+  const handleAIGenerate = async () => {
+    if (!aiTestSubject.trim() || !aiTestTopics.trim()) {
+      alert('Please select a subject and enter topics')
       return
     }
 
-    const selectedTopic = weakTopics[Math.floor(Math.random() * weakTopics.length)]
-    const generatedQuestions = [
-      {
-        id: 1,
-        question: `Based on your weak area in ${selectedTopic.topic}, which of the following best describes the fundamental concept?`,
-        options: ['Option A', 'Option B', 'Option C', 'Option D'],
-        correct: 0
-      },
-      {
-        id: 2,
-        question: `To improve your understanding of ${selectedTopic.topic}, which approach would be most effective?`,
-        options: ['Practice problems', 'Video tutorials', 'Textbook reading', 'Group discussion'],
-        correct: 0
-      },
-      {
-        id: 3,
-        question: `What is a common misconception about ${selectedTopic.topic}?`,
-        options: ['Misconception 1', 'Misconception 2', 'Misconception 3', 'Misconception 4'],
-        correct: 1
-      },
-      {
-        id: 4,
-        question: `Which formula is most relevant to ${selectedTopic.topic}?`,
-        options: ['Formula A', 'Formula B', 'Formula C', 'Formula D'],
-        correct: 2
-      },
-      {
-        id: 5,
-        question: `In ${selectedTopic.topic}, what is the relationship between X and Y?`,
-        options: ['Direct proportion', 'Inverse proportion', 'Exponential', 'Logarithmic'],
-        correct: 0
+    setIsGeneratingTest(true)
+    try {
+      const prompt = `Generate ${aiTestQuestionCount} multiple choice questions for a test on ${aiTestSubject}.
+      
+Topics to cover: ${aiTestTopics}
+Test duration: ${aiTestDuration} minutes
+
+For each question, provide:
+1. The question text
+2. 4 options (A, B, C, D)
+3. The correct answer (0-3, where 0=A, 1=B, 2=C, 3=D)
+4. Brief explanation
+5. Question type: "mcq" for multiple choice
+
+Format your response as a JSON array like this:
+[
+  {
+    "id": 1,
+    "question": "Question text here",
+    "options": ["Option A", "Option B", "Option C", "Option D"],
+    "correct": 0,
+    "explanation": "Brief explanation",
+    "type": "mcq"
+  }
+]
+
+Only return the JSON array, no other text. Make questions challenging but fair.`
+
+      const response = await synapseChat([{ role: 'user', content: prompt }], null)
+      
+      // Parse the AI response to extract JSON
+      const jsonMatch = response.match(/\[[\s\S]*\]/)
+      if (jsonMatch) {
+        const generatedQuestions = JSON.parse(jsonMatch[0])
+        
+        const newTest = {
+          id: Date.now(),
+          title: `AI-Generated: ${aiTestSubject} - ${aiTestTopics}`,
+          subject: aiTestSubject,
+          duration: aiTestDuration,
+          difficulty: 'medium',
+          questions: generatedQuestions
+        }
+
+        const updatedTests = [...tests, newTest]
+        setTests(updatedTests)
+        localStorage.setItem('synapse_mock_tests', JSON.stringify(updatedTests))
+        setShowAIGenerateModal(false)
+        setAiTestSubject('')
+        setAiTestTopics('')
+        alert(`AI-generated test created with ${generatedQuestions.length} questions!`)
+      } else {
+        throw new Error('Could not parse AI response')
       }
-    ]
-
-    const newTest = {
-      id: Date.now(),
-      title: `AI-Generated: ${selectedTopic.topic} Practice`,
-      subject: selectedTopic.topic,
-      duration: 20,
-      difficulty: selectedTopic.acc < 50 ? 'hard' : selectedTopic.acc < 70 ? 'medium' : 'easy',
-      questions: generatedQuestions
+    } catch (error) {
+      console.error('Error generating AI test:', error)
+      alert('Failed to generate test. Please try again.')
+    } finally {
+      setIsGeneratingTest(false)
     }
-
-    const updatedTests = [...tests, newTest]
-    setTests(updatedTests)
-    localStorage.setItem('synapse_mock_tests', JSON.stringify(updatedTests))
-    setShowAIGenerateModal(false)
-    alert(`AI-generated test created for ${selectedTopic.topic}!`)
   }
 
   const handleGenerateAIExplanation = async (question, userAnswer, correctAnswer) => {
@@ -736,6 +958,33 @@ export function MockTests() {
     }
   }
 
+  const gradeSubjectiveAnswer = async (question, userAnswer) => {
+    setIsGradingSubjective(true)
+    try {
+      const prompt = `Grade the following subjective answer:
+      
+Question: ${question.question}
+Student's Answer: ${userAnswer}
+Correct Answer/Key: ${question.correct || question.explanation || 'Not provided'}
+
+Evaluate the answer on a scale of 0-100 based on:
+- Accuracy of the content
+- Understanding of the concept
+- Completeness of the answer
+
+Return only a number between 0 and 100.`
+
+      const response = await synapseChat([{ role: 'user', content: prompt }], null)
+      const score = parseInt(response.match(/\d+/)?.[0] || 0)
+      return Math.min(100, Math.max(0, score))
+    } catch (error) {
+      console.error('Error grading subjective answer:', error)
+      return 50 // Default to 50 if grading fails
+    } finally {
+      setIsGradingSubjective(false)
+    }
+  }
+
   const score = calculateScore()
 
   return (
@@ -746,6 +995,22 @@ export function MockTests() {
           
           {/* Upload Button */}
           <div style={{ marginBottom: 16, display: 'flex', gap: 8 }}>
+            <button
+              onClick={() => setShowPDFConversionModal(true)}
+              style={{
+                padding: '10px 16px',
+                borderRadius: 8,
+                background: 'linear-gradient(135deg, #38bdf8 0%, #818cf8 100%)',
+                border: 'none',
+                color: '#fff',
+                fontSize: 13,
+                fontWeight: 600,
+                cursor: 'pointer',
+                transition: 'all 0.2s'
+              }}
+            >
+              📄 Convert PDF/Text
+            </button>
             <button
               onClick={() => setShowUploadModal(true)}
               style={{
@@ -869,10 +1134,10 @@ export function MockTests() {
                       }}
                       onClick={() => {
                         setSelectedTestForKey(test)
-                        setShowAnswerKeyModal(true)
+                        setShowManualAnswerKeyModal(true)
                       }}
                     >
-                      Upload Key
+                      Manual Key
                     </button>
                   </div>
                 </div>
@@ -1080,31 +1345,50 @@ export function MockTests() {
                 <div style={{ fontSize: 14, fontWeight: 500, color: 'var(--txt)', marginBottom: 16 }}>
                   {selectedTest.questions[currentQuestion].question}
                 </div>
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-                  {selectedTest.questions[currentQuestion].options.map((option, i) => (
-                    <button
-                      key={i}
-                      onClick={() => handleAnswer(selectedTest.questions[currentQuestion].id, i)}
-                      style={{
-                        padding: '12px 16px',
-                        borderRadius: 10,
-                        border: answers[selectedTest.questions[currentQuestion].id] === i
-                          ? '1px solid rgba(0,255,224,0.4)'
-                          : '1px solid var(--glass-border)',
-                        background: answers[selectedTest.questions[currentQuestion].id] === i
-                          ? 'rgba(0,255,224,0.08)'
-                          : 'var(--glass)',
-                        color: 'var(--txt)',
-                        fontSize: 13,
-                        cursor: 'pointer',
-                        textAlign: 'left',
-                        transition: 'all 0.2s'
-                      }}
-                    >
-                      {option}
-                    </button>
-                  ))}
-                </div>
+                {selectedTest.questions[currentQuestion].type === 'subjective' ? (
+                  <textarea
+                    value={subjectiveAnswers[selectedTest.questions[currentQuestion].id] || ''}
+                    onChange={(e) => setSubjectiveAnswers(prev => ({ ...prev, [selectedTest.questions[currentQuestion].id]: e.target.value }))}
+                    placeholder="Type your answer here..."
+                    rows={6}
+                    style={{
+                      width: '100%',
+                      padding: '12px 16px',
+                      borderRadius: 10,
+                      background: 'var(--glass)',
+                      border: '1px solid var(--glass-border)',
+                      color: 'var(--txt)',
+                      fontSize: 13,
+                      resize: 'vertical'
+                    }}
+                  />
+                ) : (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                    {selectedTest.questions[currentQuestion].options.map((option, i) => (
+                      <button
+                        key={i}
+                        onClick={() => handleAnswer(selectedTest.questions[currentQuestion].id, i)}
+                        style={{
+                          padding: '12px 16px',
+                          borderRadius: 10,
+                          border: answers[selectedTest.questions[currentQuestion].id] === i
+                            ? '1px solid rgba(0,255,224,0.4)'
+                            : '1px solid var(--glass-border)',
+                          background: answers[selectedTest.questions[currentQuestion].id] === i
+                            ? 'rgba(0,255,224,0.08)'
+                            : 'var(--glass)',
+                          color: 'var(--txt)',
+                          fontSize: 13,
+                          cursor: 'pointer',
+                          textAlign: 'left',
+                          transition: 'all 0.2s'
+                        }}
+                      >
+                        {option}
+                      </button>
+                    ))}
+                  </div>
+                )}
               </div>
 
               <div style={{ display: 'flex', justifyContent: 'space-between' }}>
@@ -1311,12 +1595,99 @@ export function MockTests() {
             <div style={{ fontSize: 18, fontWeight: 600, color: 'var(--txt)', marginBottom: 16 }}>
               ✨ AI-Generated Mock Test
             </div>
-            <div style={{ fontSize: 13, color: 'var(--txt2)', marginBottom: 16, lineHeight: 1.6 }}>
-              Our AI will analyze your weak topics and generate a personalized practice test to help you improve.
+            <div style={{ fontSize: 13, color: 'var(--txt2)', marginBottom: 20, lineHeight: 1.6 }}>
+              Generate a personalized test based on your chosen subject and topics.
             </div>
-            <div style={{ fontSize: 12, color: 'var(--txt3)', marginBottom: 16 }}>
-              The test will include 5 questions tailored to your weak areas with appropriate difficulty level.
+            
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 16, marginBottom: 20 }}>
+              <div>
+                <div style={{ fontSize: 12, color: 'var(--txt2)', marginBottom: 6 }}>Subject</div>
+                <select
+                  value={aiTestSubject}
+                  onChange={(e) => setAiTestSubject(e.target.value)}
+                  style={{
+                    width: '100%',
+                    padding: '10px 14px',
+                    borderRadius: 8,
+                    background: 'rgba(255,255,255,0.04)',
+                    border: '1px solid var(--glass-border)',
+                    color: 'var(--txt)',
+                    fontSize: 13
+                  }}
+                >
+                  <option value="">Select a subject</option>
+                  {['Physics', 'Chemistry', 'Mathematics', 'Biology', 'Accountancy', 'Economics', 'Business Studies'].map(s => (
+                    <option key={s} value={s}>{s}</option>
+                  ))}
+                </select>
+              </div>
+              
+              <div>
+                <div style={{ fontSize: 12, color: 'var(--txt2)', marginBottom: 6 }}>Topics</div>
+                <textarea
+                  value={aiTestTopics}
+                  onChange={(e) => setAiTestTopics(e.target.value)}
+                  placeholder="Enter topics separated by commas (e.g., Newton's Laws, Organic Chemistry, Calculus)"
+                  rows={3}
+                  style={{
+                    width: '100%',
+                    padding: '10px 14px',
+                    borderRadius: 8,
+                    background: 'rgba(255,255,255,0.04)',
+                    border: '1px solid var(--glass-border)',
+                    color: 'var(--txt)',
+                    fontSize: 13,
+                    resize: 'vertical'
+                  }}
+                />
+              </div>
+              
+              <div style={{ display: 'flex', gap: 12 }}>
+                <div style={{ flex: 1 }}>
+                  <div style={{ fontSize: 12, color: 'var(--txt2)', marginBottom: 6 }}>Questions</div>
+                  <select
+                    value={aiTestQuestionCount}
+                    onChange={(e) => setAiTestQuestionCount(parseInt(e.target.value))}
+                    style={{
+                      width: '100%',
+                      padding: '10px 14px',
+                      borderRadius: 8,
+                      background: 'rgba(255,255,255,0.04)',
+                      border: '1px solid var(--glass-border)',
+                      color: 'var(--txt)',
+                      fontSize: 13
+                    }}
+                  >
+                    <option value={3}>3 questions</option>
+                    <option value={5}>5 questions</option>
+                    <option value={10}>10 questions</option>
+                  </select>
+                </div>
+                
+                <div style={{ flex: 1 }}>
+                  <div style={{ fontSize: 12, color: 'var(--txt2)', marginBottom: 6 }}>Duration (min)</div>
+                  <select
+                    value={aiTestDuration}
+                    onChange={(e) => setAiTestDuration(parseInt(e.target.value))}
+                    style={{
+                      width: '100%',
+                      padding: '10px 14px',
+                      borderRadius: 8,
+                      background: 'rgba(255,255,255,0.04)',
+                      border: '1px solid var(--glass-border)',
+                      color: 'var(--txt)',
+                      fontSize: 13
+                    }}
+                  >
+                    <option value={15}>15 min</option>
+                    <option value={30}>30 min</option>
+                    <option value={45}>45 min</option>
+                    <option value={60}>60 min</option>
+                  </select>
+                </div>
+              </div>
             </div>
+            
             <div style={{ display: 'flex', gap: 8 }}>
               <button
                 onClick={() => setShowAIGenerateModal(false)}
@@ -1336,19 +1707,237 @@ export function MockTests() {
               </button>
               <button
                 onClick={handleAIGenerate}
+                disabled={isGeneratingTest}
                 style={{
                   flex: 1,
                   padding: '12px',
                   borderRadius: 8,
-                  background: 'linear-gradient(135deg, #7c3aff 0%, #ff2d78 100%)',
+                  background: isGeneratingTest ? 'rgba(124,58,255,0.3)' : 'linear-gradient(135deg, #7c3aff 0%, #ff2d78 100%)',
                   border: 'none',
                   color: '#fff',
+                  fontSize: 13,
+                  fontWeight: 600,
+                  cursor: isGeneratingTest ? 'not-allowed' : 'pointer'
+                }}
+              >
+                {isGeneratingTest ? 'Generating...' : 'Generate Test'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+      
+      {/* PDF/Text Conversion Modal */}
+      {showPDFConversionModal && (
+        <div style={{
+          position: 'fixed',
+          top: 0,
+          left: 0,
+          right: 0,
+          bottom: 0,
+          background: 'rgba(0,0,0,0.8)',
+          backdropFilter: 'blur(10px)',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          zIndex: 1000
+        }}>
+          <div style={{
+            width: '90%',
+            maxWidth: 600,
+            maxHeight: '80vh',
+            background: 'var(--glass)',
+            border: '1px solid var(--glass-border)',
+            borderRadius: 20,
+            padding: 24,
+            overflowY: 'auto'
+          }}>
+            <div style={{ fontSize: 18, fontWeight: 600, color: 'var(--txt)', marginBottom: 16 }}>
+              📄 Convert PDF/Text to Test
+            </div>
+            <div style={{ fontSize: 13, color: 'var(--txt2)', marginBottom: 20 }}>
+              Paste text content from your PDF or document. AI will extract questions and convert them to test format.
+            </div>
+            
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 16, marginBottom: 20 }}>
+              <div>
+                <div style={{ fontSize: 12, color: 'var(--txt2)', marginBottom: 6 }}>Subject</div>
+                <select
+                  value={conversionSubject}
+                  onChange={(e) => setConversionSubject(e.target.value)}
+                  style={{
+                    width: '100%',
+                    padding: '10px 14px',
+                    borderRadius: 8,
+                    background: 'rgba(255,255,255,0.04)',
+                    border: '1px solid var(--glass-border)',
+                    color: 'var(--txt)',
+                    fontSize: 13
+                  }}
+                >
+                  <option value="">Select a subject</option>
+                  {['Physics', 'Chemistry', 'Mathematics', 'Biology', 'Accountancy', 'Economics', 'Business Studies'].map(s => (
+                    <option key={s} value={s}>{s}</option>
+                  ))}
+                </select>
+              </div>
+              
+              <div>
+                <div style={{ fontSize: 12, color: 'var(--txt2)', marginBottom: 6 }}>Text Content</div>
+                <textarea
+                  value={pdfText}
+                  onChange={(e) => setPdfText(e.target.value)}
+                  placeholder="Paste the text content from your PDF or document here. Include questions and options..."
+                  rows={10}
+                  style={{
+                    width: '100%',
+                    padding: '10px 14px',
+                    borderRadius: 8,
+                    background: 'rgba(255,255,255,0.04)',
+                    border: '1px solid var(--glass-border)',
+                    color: 'var(--txt)',
+                    fontSize: 13,
+                    resize: 'vertical'
+                  }}
+                />
+              </div>
+            </div>
+            
+            <div style={{ display: 'flex', gap: 8 }}>
+              <button
+                onClick={() => {
+                  setShowPDFConversionModal(false)
+                  setPdfText('')
+                  setConversionSubject('')
+                }}
+                style={{
+                  flex: 1,
+                  padding: '12px',
+                  borderRadius: 8,
+                  background: 'var(--glass)',
+                  border: '1px solid var(--glass-border)',
+                  color: 'var(--txt)',
                   fontSize: 13,
                   fontWeight: 600,
                   cursor: 'pointer'
                 }}
               >
-                Generate Test
+                Cancel
+              </button>
+              <button
+                onClick={() => handlePDFConversion(pdfText, conversionSubject)}
+                disabled={isProcessingPDF || !pdfText.trim() || !conversionSubject}
+                style={{
+                  flex: 1,
+                  padding: '12px',
+                  borderRadius: 8,
+                  background: isProcessingPDF ? 'rgba(56,189,248,0.3)' : 'linear-gradient(135deg, #38bdf8 0%, #818cf8 100%)',
+                  border: 'none',
+                  color: '#fff',
+                  fontSize: 13,
+                  fontWeight: 600,
+                  cursor: isProcessingPDF ? 'not-allowed' : 'pointer'
+                }}
+              >
+                {isProcessingPDF ? 'Converting...' : 'Convert to Test'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+      
+      {/* Manual Answer Key Modal */}
+      {showManualAnswerKeyModal && selectedTestForKey && (
+        <div style={{
+          position: 'fixed',
+          top: 0,
+          left: 0,
+          right: 0,
+          bottom: 0,
+          background: 'rgba(0,0,0,0.8)',
+          backdropFilter: 'blur(10px)',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          zIndex: 1000
+        }}>
+          <div style={{
+            width: '90%',
+            maxWidth: 600,
+            maxHeight: '80vh',
+            background: 'var(--glass)',
+            border: '1px solid var(--glass-border)',
+            borderRadius: 20,
+            padding: 24,
+            overflowY: 'auto'
+          }}>
+            <div style={{ fontSize: 18, fontWeight: 600, color: 'var(--txt)', marginBottom: 16 }}>
+              Set Answer Key: {selectedTestForKey.title}
+            </div>
+            <div style={{ fontSize: 13, color: 'var(--txt2)', marginBottom: 20 }}>
+              Enter the correct answer index (0-3) for each question
+            </div>
+            
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 12, marginBottom: 20 }}>
+              {selectedTestForKey.questions.map((q, idx) => (
+                <div key={q.id} style={{ padding: 12, borderRadius: 8, background: 'rgba(255,255,255,0.02)' }}>
+                  <div style={{ fontSize: 12, color: 'var(--txt2)', marginBottom: 6 }}>Question {idx + 1}</div>
+                  <div style={{ fontSize: 13, color: 'var(--txt)', marginBottom: 8 }}>{q.question}</div>
+                  <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                    {q.options && q.options.map((opt, i) => (
+                      <button
+                        key={i}
+                        onClick={() => setManualAnswerKey(prev => ({ ...prev, [q.id]: i }))}
+                        style={{
+                          padding: '6px 12px',
+                          borderRadius: 6,
+                          border: manualAnswerKey[q.id] === i ? '1px solid #4ade80' : '1px solid var(--glass-border)',
+                          background: manualAnswerKey[q.id] === i ? 'rgba(74,222,128,0.2)' : 'var(--glass)',
+                          color: 'var(--txt)',
+                          fontSize: 11,
+                          cursor: 'pointer'
+                        }}
+                      >
+                        {String.fromCharCode(65 + i)}: {opt}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              ))}
+            </div>
+            
+            <div style={{ display: 'flex', gap: 8 }}>
+              <button
+                onClick={() => setShowManualAnswerKeyModal(false)}
+                style={{
+                  flex: 1,
+                  padding: '12px',
+                  borderRadius: 8,
+                  background: 'var(--glass)',
+                  border: '1px solid var(--glass-border)',
+                  color: 'var(--txt)',
+                  fontSize: 13,
+                  fontWeight: 600,
+                  cursor: 'pointer'
+                }}
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleManualAnswerKeySubmit}
+                style={{
+                  flex: 1,
+                  padding: '12px',
+                  borderRadius: 8,
+                  background: 'var(--accent)',
+                  border: 'none',
+                  color: '#000',
+                  fontSize: 13,
+                  fontWeight: 600,
+                  cursor: 'pointer'
+                }}
+              >
+                Save Answer Key
               </button>
             </div>
           </div>
@@ -1505,11 +2094,21 @@ export function Analytics() {
     const streak = streakDays.filter(day => 
       studySessions.some(s => new Date(s.date).toDateString() === day)
     ).length
-    const streakChange = 3 // Mock comparison
+    
+    // Calculate streak change (compare with previous week)
+    const lastWeekStreakDays = [...Array(7)].map((_, i) => {
+      const checkDate = new Date(today)
+      checkDate.setDate(today.getDate() - (13 - i))
+      return checkDate.toDateString()
+    })
+    const lastWeekStreak = lastWeekStreakDays.filter(day => 
+      studySessions.some(s => new Date(s.date).toDateString() === day)
+    ).length
+    const streakChange = streak - lastWeekStreak
 
-    // Tests done (mock for now)
-    const testsDone = 8
-    const testsChange = 2 // Mock comparison
+    // Tests done (calculate from actual mock tests)
+    const testsDone = tests.length
+    const testsChange = 0 // Would need historical data to calculate change
 
     // Subject performance
     const subjects = ['Physics', 'Chemistry', 'Mathematics', 'Biology', 'Accountancy', 'Economics']

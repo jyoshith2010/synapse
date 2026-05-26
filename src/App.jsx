@@ -132,6 +132,50 @@ export default function App() {
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false)
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
   const [user, setUser] = useState(null)
+  const [backgroundImage, setBackgroundImage] = useState('')
+  const [accentColor, setAccentColor] = useState('#00ffe0')
+  const updateTheme = (newBackground, newAccentColor) => {
+    if (newBackground !== undefined) {
+      // Optimize background image for mobile
+      const isMobile = window.innerWidth < 768
+      if (isMobile && newBackground.length > 50000) {
+        // Don't use large background images on mobile
+        setBackgroundImage('')
+        localStorage.setItem('synapse_background_image', '')
+      } else {
+        setBackgroundImage(newBackground)
+        localStorage.setItem('synapse_background_image', newBackground)
+      }
+    }
+    if (newAccentColor !== undefined) {
+      setAccentColor(newAccentColor)
+      localStorage.setItem('synapse_accent_color', newAccentColor)
+      document.body.style.setProperty('--accent-color', newAccentColor)
+    }
+  }
+
+  useEffect(() => {
+    // Load theme preferences from localStorage
+    const savedBackground = localStorage.getItem('synapse_background_image')
+    // Optimize background image for mobile
+    const isMobile = window.innerWidth < 768
+    if (savedBackground && !(isMobile && savedBackground.length > 50000)) {
+      setBackgroundImage(savedBackground)
+    }
+    
+    const savedAccentColor = localStorage.getItem('synapse_accent_color')
+    if (savedAccentColor) {
+      setAccentColor(savedAccentColor)
+      document.body.style.setProperty('--accent-color', savedAccentColor)
+    }
+  }, [])
+
+  // Update CSS variable when accent color changes
+  useEffect(() => {
+    if (accentColor) {
+      document.body.style.setProperty('--accent-color', accentColor)
+    }
+  }, [accentColor])
 
   useEffect(() => {
     const unsub = onAuthChange(async (firebaseUser) => {
@@ -258,10 +302,21 @@ export default function App() {
             onPageChange={handleActivePage}
             onMobileMenuToggle={handleMobileMenuToggle}
           />
-          <div className="page-content">
+          <div className="page-content" style={{
+            backgroundImage: backgroundImage ? `url(${backgroundImage})` : 'none',
+            backgroundSize: 'cover',
+            backgroundPosition: 'center',
+            backgroundAttachment: 'fixed'
+          }}>
             <Suspense fallback={<LoadingScreen />}>
               <PageSlide key={activePage}>
-                <CurrentPage user={user} onPageChange={handleActivePage} />
+                <CurrentPage 
+                  user={user} 
+                  onPageChange={handleActivePage}
+                  backgroundImage={backgroundImage}
+                  accentColor={accentColor}
+                  updateTheme={updateTheme}
+                />
               </PageSlide>
             </Suspense>
           </div>

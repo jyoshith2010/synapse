@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from 'react'
 import { synapseChat, synapseFlashcards, synapseSummarize, formatSynapseError } from '../lib/ai/synapseAi'
 import { quickScan } from '../lib/ocr/tesseract'
+import { getWeakTopics, getExams, getTasks } from '../lib/storage'
 
 // Simple markdown parser for bold text
 function parseMarkdown(text) {
@@ -39,8 +40,25 @@ export default function AIAssistant({ user }) {
   const [studyPlan, setStudyPlan] = useState(null)
   const [generatingStudyPlan, setGeneratingStudyPlan] = useState(false)
   const [selectedSubject, setSelectedSubject] = useState('General')
+  const [studentContext, setStudentContext] = useState(null)
   const bottomRef = useRef(null)
   const fileInputRef = useRef(null)
+
+  useEffect(() => {
+    // Load student's subject preferences and context
+    const weakTopics = getWeakTopics()
+    const exams = getExams()
+    const tasks = getTasks()
+    
+    const context = {
+      weakTopics: weakTopics.map(t => ({ topic: t.topic, accuracy: t.acc })),
+      upcomingExams: exams.map(e => ({ name: e.name, date: e.date, daysUntil: Math.ceil((new Date(e.date) - new Date()) / (1000 * 60 * 60 * 24)) })),
+      recentTasks: tasks.slice(0, 5).map(t => ({ subject: t.subject, task: t.task })),
+      subjects: user?.subjects || []
+    }
+    
+    setStudentContext(context)
+  }, [user])
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
@@ -55,7 +73,23 @@ export default function AIAssistant({ user }) {
       ? `[Subject: ${selectedSubject}] ` 
       : ''
 
-    const history = [...msgs, { role: 'user', content: subjectContext + text }]
+    // Add student context to personalize responses
+    let contextPrefix = ''
+    if (studentContext) {
+      const weakTopicsStr = studentContext.weakTopics.length > 0 
+        ? `Weak topics: ${studentContext.weakTopics.map(t => t.topic).join(', ')}. ` 
+        : ''
+      const examsStr = studentContext.upcomingExams.length > 0
+        ? `Upcoming exams: ${studentContext.upcomingExams.map(e => `${e.name} in ${e.daysUntil} days`).join(', ')}. `
+        : ''
+      const subjectsStr = studentContext.subjects.length > 0
+        ? `Studying: ${studentContext.subjects.join(', ')}. `
+        : ''
+      
+      contextPrefix = `[Student Context: ${subjectsStr}${weakTopicsStr}${examsStr}] `
+    }
+
+    const history = [...msgs, { role: 'user', content: contextPrefix + subjectContext + text }]
     setInput('')
     setMsgs(history)
     setLoading(true)

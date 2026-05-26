@@ -2,7 +2,12 @@ import { useEffect, useRef } from 'react'
 
 export default function Canvas() {
   const ref = useRef()
+  const isMobile = window.innerWidth < 768
+  
   useEffect(() => {
+    // Disable canvas on mobile for better performance
+    if (isMobile) return
+    
     const cv = ref.current, cx = cv.getContext('2d')
     let W, H, pts = [], mx = 0, my = 0, raf
     function resize() {
@@ -10,7 +15,9 @@ export default function Canvas() {
       H = cv.height = window.innerHeight
     }
     resize()
-    for (let i = 0; i < 60; i++) pts.push({
+    // Reduce particle count for better performance
+    const particleCount = 30
+    for (let i = 0; i < particleCount; i++) pts.push({
       x: Math.random() * W, y: Math.random() * H,
       vx: (Math.random() - .5) * .2, vy: (Math.random() - .5) * .2,
       r: Math.random() * 1.2 + .3,
@@ -37,19 +44,26 @@ export default function Canvas() {
         cx.beginPath(); cx.arc(p.x, p.y, p.r*b, 0, Math.PI*2)
         cx.fillStyle = `rgba(${p.h},${p.a*b})`; cx.fill()
       })
-      for (let i = 0; i < pts.length; i++)
-        for (let j = i+1; j < pts.length; j++) {
-          const dx = pts[i].x-pts[j].x, dy = pts[i].y-pts[j].y
-          const d = Math.sqrt(dx*dx+dy*dy)
-          if (d < 110) {
-            cx.beginPath(); cx.moveTo(pts[i].x, pts[i].y); cx.lineTo(pts[j].x, pts[j].y)
-            cx.strokeStyle = `rgba(0,255,224,${.04*(1-d/110)})`; cx.lineWidth = .5; cx.stroke()
+      // Skip line drawing on mobile for performance
+      if (!isMobile) {
+        for (let i = 0; i < pts.length; i++)
+          for (let j = i+1; j < pts.length; j++) {
+            const dx = pts[i].x-pts[j].x, dy = pts[i].y-pts[j].y
+            const d = Math.sqrt(dx*dx+dy*dy)
+            if (d < 110) {
+              cx.beginPath(); cx.moveTo(pts[i].x, pts[i].y); cx.lineTo(pts[j].x, pts[j].y)
+              cx.strokeStyle = `rgba(0,255,224,${.04*(1-d/110)})`; cx.lineWidth = .5; cx.stroke()
+            }
           }
-        }
+      }
       raf = requestAnimationFrame(draw)
     }
     draw()
     return () => { cancelAnimationFrame(raf) }
-  }, [])
+  }, [isMobile])
+  
+  // Don't render canvas on mobile
+  if (isMobile) return null
+  
   return <canvas ref={ref} style={{ position:'fixed',inset:0,zIndex:0,pointerEvents:'none' }} />
 }

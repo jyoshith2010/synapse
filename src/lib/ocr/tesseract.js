@@ -4,6 +4,7 @@ import { createWorker } from 'tesseract.js'
  * Enhanced OCR scanner for notes & textbook pages.
  * Supports multiple languages and provides better preprocessing.
  * Runs entirely in browser - no API key required.
+ * Optimized for mobile devices.
  */
 export async function scanImageText(file, onProgress, options = {}) {
   const {
@@ -13,57 +14,83 @@ export async function scanImageText(file, onProgress, options = {}) {
     enhance = true, // Apply image preprocessing
   } = options
 
-  const worker = await createWorker(language, oem, {
-    logger: (m) => {
-      if (m.status === 'recognizing text' && onProgress) {
-        onProgress(Math.round((m.progress || 0) * 100))
-      }
-    },
-  })
+  // Check if running on mobile device
+  const isMobile = window.innerWidth < 768 || /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent)
 
   try {
-    // Set parameters for better recognition
-    await worker.setParameters({
-      tessedit_pageseg_mode: psm,
-      preserve_interword_spaces: '1',
+    const worker = await createWorker(language, oem, {
+      logger: (m) => {
+        if (m.status === 'recognizing text' && onProgress) {
+          onProgress(Math.round((m.progress || 0) * 100))
+        }
+      },
+      // Mobile-specific worker options
+      workerPath: isMobile ? undefined : undefined,
+      corePath: isMobile ? undefined : undefined,
     })
 
-    // Preprocess image if enhance is enabled
-    let imageToProcess = file
-    if (enhance) {
-      imageToProcess = await preprocessImage(file)
-    }
+    try {
+      // Set parameters for better recognition
+      await worker.setParameters({
+        tessedit_pageseg_mode: psm,
+        preserve_interword_spaces: '1',
+      })
 
-    const { data } = await worker.recognize(imageToProcess)
-    
-    // Post-process the text
-    const cleanedText = postProcessText(data?.text || '')
-    
-    return cleanedText
+      // Preprocess image if enhance is enabled
+      let imageToProcess = file
+      if (enhance) {
+        imageToProcess = await preprocessImage(file, isMobile)
+      }
+
+      const { data } = await worker.recognize(imageToProcess)
+      
+      // Post-process the text
+      const cleanedText = postProcessText(data?.text || '')
+      
+      return cleanedText
+    } finally {
+      await worker.terminate()
+    }
   } catch (error) {
     console.error('OCR Error:', error)
+    
+    // Fallback for mobile: return a helpful message
+    if (isMobile) {
+      throw new Error('OCR is limited on mobile devices. Please use a desktop computer for better accuracy, or try taking a clearer photo with better lighting.')
+    }
+    
     throw new Error(`OCR failed: ${error.message || 'Unknown error'}`)
-  } finally {
-    await worker.terminate()
   }
 }
 
 /**
  * Preprocess image for better OCR accuracy.
  * Converts to grayscale, increases contrast, and reduces noise.
+ * Optimized for mobile by reducing image size.
  */
-async function preprocessImage(file) {
+async function preprocessImage(file, isMobile = false) {
   return new Promise((resolve, reject) => {
     const img = new Image()
     const canvas = document.createElement('canvas')
     const ctx = canvas.getContext('2d')
 
     img.onload = () => {
-      canvas.width = img.width
-      canvas.height = img.height
+      // Reduce image size on mobile for better performance
+      const maxSize = isMobile ? 1024 : 2048
+      let width = img.width
+      let height = img.height
+      
+      if (width > maxSize || height > maxSize) {
+        const ratio = Math.min(maxSize / width, maxSize / height)
+        width = Math.round(width * ratio)
+        height = Math.round(height * ratio)
+      }
+      
+      canvas.width = width
+      canvas.height = height
 
       // Draw image to canvas
-      ctx.drawImage(img, 0, 0)
+      ctx.drawImage(img, 0, 0, width, height)
 
       // Get image data
       const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height)
@@ -121,8 +148,11 @@ function postProcessText(text) {
 
 /**
  * Quick scan with default settings for most use cases.
+ * Includes mobile optimizations.
  */
 export async function quickScan(file, onProgress) {
+  const isMobile = window.innerWidth < 768 || /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent)
+  
   return scanImageText(file, onProgress, {
     language: 'eng',
     enhance: true,

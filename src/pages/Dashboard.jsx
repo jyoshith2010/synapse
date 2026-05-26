@@ -2,7 +2,7 @@ import { useState, useEffect, useMemo } from 'react'
 import { DragDropContext, Droppable, Draggable } from '@hello-pangea/dnd'
 import { getNotes, getTasks, saveTasks, getStudySessions, saveStudySessions, getExams, saveExams, getWeakTopics, saveWeakTopics } from '../lib/storage'
 
-export default function Dashboard({ user, onPageChange }) {
+export default function Dashboard({ user, onPageChange, backgroundImage: globalBackgroundImage, accentColor: globalAccentColor, updateTheme }) {
   const [greeting, setGreeting] = useState('')
   const [date, setDate] = useState('')
   const [stats, setStats] = useState({ streak: 0, studyTime: 0, accuracy: 0, notesCount: 0 })
@@ -36,8 +36,8 @@ export default function Dashboard({ user, onPageChange }) {
     weakTopics: true
   })
   const [widgetOrder, setWidgetOrder] = useState(['studyStreak', 'studyHistory', 'quickActions', 'todaysPlan', 'examCountdown', 'weakTopics'])
-  const [backgroundImage, setBackgroundImage] = useState('')
-  const [accentColor, setAccentColor] = useState('#00ffe0')
+  const [backgroundImage, setBackgroundImage] = useState(globalBackgroundImage || '')
+  const [accentColor, setAccentColor] = useState(globalAccentColor || '#00ffe0')
   const [widgetOpacity, setWidgetOpacity] = useState(0.88)
   const [customAccentColor, setCustomAccentColor] = useState('#00ffe0')
   const [showCustomColorPicker, setShowCustomColorPicker] = useState(false)
@@ -55,6 +55,14 @@ export default function Dashboard({ user, onPageChange }) {
     const d = new Date()
     const opts = { weekday: 'long', day: 'numeric', month: 'long' }
     setDate(d.toLocaleDateString('en-IN', opts))
+    
+    // Sync with global theme props if they change
+    if (globalBackgroundImage !== undefined && globalBackgroundImage !== backgroundImage) {
+      setBackgroundImage(globalBackgroundImage)
+    }
+    if (globalAccentColor !== undefined && globalAccentColor !== accentColor) {
+      setAccentColor(globalAccentColor)
+    }
     
     // Load widget preferences
     const savedWidgetPrefs = localStorage.getItem('synapse_widget_preferences')
@@ -138,7 +146,7 @@ export default function Dashboard({ user, onPageChange }) {
     // Calculate accuracy from loaded weak topics
     const avgAccuracy = userWeakTopics.length > 0 
       ? Math.round(userWeakTopics.reduce((acc, t) => acc + t.acc, 0) / userWeakTopics.length)
-      : 70
+      : 0
     
     setTimeout(() => {
       setStats({
@@ -335,7 +343,7 @@ export default function Dashboard({ user, onPageChange }) {
       reader.onloadend = () => {
         const base64String = reader.result
         setBackgroundImage(base64String)
-        localStorage.setItem('synapse_background_image', base64String)
+        if (updateTheme) updateTheme(base64String, undefined)
       }
       reader.readAsDataURL(file)
     }
@@ -343,12 +351,12 @@ export default function Dashboard({ user, onPageChange }) {
 
   const removeBackground = () => {
     setBackgroundImage('')
-    localStorage.removeItem('synapse_background_image')
+    if (updateTheme) updateTheme('', undefined)
   }
 
   const handleAccentColorChange = (color) => {
     setAccentColor(color)
-    localStorage.setItem('synapse_accent_color', color)
+    if (updateTheme) updateTheme(undefined, color)
   }
 
   const handleWidgetOpacityChange = (opacity) => {
@@ -359,7 +367,7 @@ export default function Dashboard({ user, onPageChange }) {
   const handleCustomAccentColorChange = (color) => {
     setCustomAccentColor(color)
     setAccentColor(color)
-    localStorage.setItem('synapse_accent_color', color)
+    if (updateTheme) updateTheme(undefined, color)
   }
 
   const handleGridColumnsChange = (columns) => {
